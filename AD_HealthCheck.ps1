@@ -5,6 +5,8 @@
     Runs comprehensive AD health checks and generates a single HTML report.
     Must be run as Administrator on a domain controller or management workstation
     with RSAT (Remote Server Administration Tools) installed.
+.AUTHOR
+    Dallas Milem
 .NOTES
     Commands covered:
       - dcdiag /v, /test:services, /test:advertising
