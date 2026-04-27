@@ -41,6 +41,8 @@ Write-Host "  |       Active Directory Domain Health Check Tool        |" -Foreg
 Write-Host "  |                                                         |" -ForegroundColor Cyan
 Write-Host "  |  Runs all standard AD health commands as Administrator  |" -ForegroundColor Cyan
 Write-Host "  |  and compiles results into a single HTML report.        |" -ForegroundColor Cyan
+Write-Host "  |                                                         |" -ForegroundColor Cyan
+Write-Host "  |               Created by Dallas Milem                  |" -ForegroundColor Cyan
 Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
 
