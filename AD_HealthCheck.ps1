@@ -90,6 +90,23 @@ if ($override -match ',') {
     Write-Host "  Using: $SourceDC -> $DestDC" -ForegroundColor Green
 }
 
+# ─── Gather FSMO role holders ─────────────────────────────────────────────────
+$FsmoRoles  = [ordered]@{}
+$FsmoGather = $null
+try {
+    $adDom = Get-ADDomain -Server $Domain -ErrorAction Stop
+    $adFor = Get-ADForest -Identity $Domain -ErrorAction Stop
+    $FsmoRoles["Schema Master"]         = $adFor.SchemaMaster
+    $FsmoRoles["Domain Naming Master"]  = $adFor.DomainNamingMaster
+    $FsmoRoles["PDC Emulator"]          = $adDom.PDCEmulator
+    $FsmoRoles["RID Master"]            = $adDom.RIDMaster
+    $FsmoRoles["Infrastructure Master"] = $adDom.InfrastructureMaster
+    Write-Host "  FSMO roles retrieved." -ForegroundColor Green
+} catch {
+    $FsmoGather = "Could not retrieve FSMO roles: $($_.Exception.Message)"
+    Write-Host "  Warning: $FsmoGather" -ForegroundColor Yellow
+}
+
 # ─── Timestamp / Report path ──────────────────────────────────────────────────
 $RunTime   = Get-Date
 $Stamp     = $RunTime.ToString("yyyyMMdd_HHmmss")
@@ -237,6 +254,23 @@ Write-Host "  [5/8] FSMO Roles & Time Service" -ForegroundColor Yellow
 
 Invoke-Check "FSMO Roles & Time Service" "netdom query fsmo" {
     netdom query fsmo 2>&1
+}
+
+Invoke-Check "FSMO Roles & Time Service" "Get-ADDomain / Get-ADForest — Structured FSMO Role Holders" {
+    try {
+        $d = Get-ADDomain -Server $Domain -ErrorAction Stop
+        $f = Get-ADForest -Identity $Domain -ErrorAction Stop
+        "=== Forest-Wide Roles (apply to all domains in the forest) ==="
+        "  Schema Master         : $($f.SchemaMaster)"
+        "  Domain Naming Master  : $($f.DomainNamingMaster)"
+        ""
+        "=== Domain-Wide Roles (apply to this domain only) ==="
+        "  PDC Emulator          : $($d.PDCEmulator)"
+        "  RID Master            : $($d.RIDMaster)"
+        "  Infrastructure Master : $($d.InfrastructureMaster)"
+    } catch {
+        "ERROR: $($_.Exception.Message)"
+    }
 }
 
 Invoke-Check "FSMO Roles & Time Service" "w32tm /query /status" {
@@ -388,6 +422,26 @@ foreach ($sectionName in $Sections.Keys) {
     $htmlBody += "  </div>`n</section>`n"
 }
 
+# ─── Build FSMO table rows for HTML ──────────────────────────────────────────
+$fsmoScopeMap = @{
+    "Schema Master"         = "Forest"
+    "Domain Naming Master"  = "Forest"
+    "PDC Emulator"          = "Domain"
+    "RID Master"            = "Domain"
+    "Infrastructure Master" = "Domain"
+}
+$fsmoTableRows = ""
+if ($FsmoRoles.Count -gt 0) {
+    foreach ($role in $FsmoRoles.Keys) {
+        $holder = HtmlEncode $FsmoRoles[$role]
+        $scope  = $fsmoScopeMap[$role]
+        $fsmoTableRows += "      <tr><td>$role</td><td><span class='scope-$($scope.ToLower())'>$scope</span></td><td><code>$holder</code></td></tr>`n"
+    }
+} else {
+    $errMsg = HtmlEncode (if ($FsmoGather) { $FsmoGather } else { "FSMO data unavailable" })
+    $fsmoTableRows = "      <tr><td colspan='3' style='color:var(--red);text-align:center;'>$errMsg</td></tr>"
+}
+
 # ─── Overall status color ─────────────────────────────────────────────────────
 $overallColor = if ($ErrCount  -gt 0) { "#da3633" }
                 elseif ($WarnCount -gt 0) { "#e3b341" }
@@ -450,6 +504,18 @@ $html = @"
                 font-family:'Cascadia Code','Consolas',monospace;font-size:0.8em;
                 white-space:pre-wrap;word-break:break-all;color:#a5d6ff;
                 border-top:1px solid var(--border);max-height:600px;overflow-y:auto;}
+  /* ── FSMO table ── */
+  .fsmo-section{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+                margin-bottom:24px;overflow:hidden;}
+  .fsmo-heading{padding:13px 18px;font-size:1em;font-weight:600;border-bottom:1px solid var(--border);}
+  .fsmo-table{width:100%;border-collapse:collapse;}
+  .fsmo-table th{background:var(--surface2);color:var(--sub);font-size:0.75em;text-transform:uppercase;
+                 letter-spacing:.07em;padding:9px 18px;text-align:left;border-bottom:1px solid var(--border);}
+  .fsmo-table td{padding:9px 18px;border-bottom:1px solid var(--border);font-size:0.88em;}
+  .fsmo-table tr:last-child td{border-bottom:none;}
+  .fsmo-table code{font-family:'Cascadia Code','Consolas',monospace;color:var(--accent);}
+  .scope-forest{background:#1f3a5f;color:#79c0ff;border-radius:4px;padding:2px 8px;font-size:0.75em;font-weight:600;}
+  .scope-domain{background:#1a3320;color:#56d364;border-radius:4px;padding:2px 8px;font-size:0.75em;font-weight:600;}
   /* ── Footer ── */
   .footer{margin-top:32px;text-align:center;color:var(--sub);font-size:0.8em;}
 </style>
@@ -489,6 +555,18 @@ $html = @"
     </div>
     <div class="lbl">Overall</div>
   </div>
+</div>
+
+<div class="fsmo-section">
+  <div class="fsmo-heading">&#127959; FSMO Role Holders</div>
+  <table class="fsmo-table">
+    <thead>
+      <tr><th>Role</th><th>Scope</th><th>Current Holder</th></tr>
+    </thead>
+    <tbody>
+$fsmoTableRows
+    </tbody>
+  </table>
 </div>
 
 $htmlBody
@@ -568,6 +646,119 @@ Write-Host ""
 $open = (Read-Host "  Open the HTML report in your browser now? (Y/N)").Trim()
 if ($open -match '^[Yy]') {
     Start-Process $ReportPath
+}
+
+# ─── FSMO Migration ───────────────────────────────────────────────────────────
+Write-Host ""
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host "  |               FSMO Role Migration                      |" -ForegroundColor Cyan
+Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
+Write-Host ""
+
+if ($FsmoRoles.Count -eq 0) {
+    Write-Host "  FSMO role data unavailable - skipping migration option." -ForegroundColor Yellow
+} else {
+    Write-Host "  Current FSMO Role Holders:" -ForegroundColor Cyan
+    $roleList = @($FsmoRoles.Keys)
+    for ($i = 0; $i -lt $roleList.Count; $i++) {
+        Write-Host ("    [{0}] {1,-24} -> {2}" -f ($i + 1), $roleList[$i], $FsmoRoles[$roleList[$i]])
+    }
+    Write-Host ""
+
+    $doMigrate = (Read-Host "  Migrate FSMO roles to a different DC? (Y/N)").Trim()
+    if ($doMigrate -match '^[Yy]') {
+
+        Write-Host ""
+        $targetDC = (Read-Host "  Enter the target DC name (hostname or FQDN)").Trim()
+
+        if ([string]::IsNullOrWhiteSpace($targetDC)) {
+            Write-Host "  No target DC entered. Migration cancelled." -ForegroundColor Yellow
+        } else {
+            Write-Host ""
+            Write-Host "  Which roles should be migrated to '$targetDC'?" -ForegroundColor Cyan
+            Write-Host "    [A] All five roles"
+            for ($i = 0; $i -lt $roleList.Count; $i++) {
+                Write-Host ("    [{0}] {1}" -f ($i + 1), $roleList[$i])
+            }
+            Write-Host ""
+            $roleChoice = (Read-Host "  Enter choice (A, or 1-5, comma-separated for multiple)").Trim().ToUpper()
+
+            # PDCEmulator=0, RIDMaster=1, InfrastructureMaster=2, SchemaMaster=3, DomainNamingMaster=4
+            $roleIntMap = @{
+                "Schema Master"         = 3
+                "Domain Naming Master"  = 4
+                "PDC Emulator"          = 0
+                "RID Master"            = 1
+                "Infrastructure Master" = 2
+            }
+
+            $selectedInts = @()
+            if ($roleChoice -eq 'A') {
+                $selectedInts = $roleList | ForEach-Object { $roleIntMap[$_] }
+            } else {
+                $roleChoice -split ',' | ForEach-Object {
+                    $token = $_.Trim()
+                    if ($token -match '^\d+$') {
+                        $idx = [int]$token - 1
+                        if ($idx -ge 0 -and $idx -lt $roleList.Count) {
+                            $selectedInts += $roleIntMap[$roleList[$idx]]
+                        } else {
+                            Write-Host "  Ignoring out-of-range choice: $token" -ForegroundColor Yellow
+                        }
+                    } else {
+                        Write-Host "  Ignoring invalid choice: $token" -ForegroundColor Yellow
+                    }
+                }
+            }
+
+            if ($selectedInts.Count -eq 0) {
+                Write-Host "  No valid roles selected. Migration cancelled." -ForegroundColor Yellow
+            } else {
+                $selectedNames = $selectedInts | ForEach-Object {
+                    $val = $_
+                    ($roleIntMap.GetEnumerator() | Where-Object { $_.Value -eq $val }).Key
+                }
+                Write-Host ""
+                Write-Host "  Roles to migrate to '$targetDC':" -ForegroundColor Yellow
+                $selectedNames | ForEach-Object { Write-Host "    - $_" }
+                Write-Host ""
+                Write-Host "  WARNING: FSMO migration affects the entire domain/forest." -ForegroundColor Red
+                Write-Host "  Ensure '$targetDC' is healthy and fully replicated before proceeding." -ForegroundColor Red
+                Write-Host ""
+                $confirm = (Read-Host "  Type CONFIRM to proceed, or anything else to cancel").Trim()
+
+                if ($confirm -eq 'CONFIRM') {
+                    Write-Host ""
+                    Write-Host "  Migrating roles..." -ForegroundColor Yellow
+                    try {
+                        Move-ADDirectoryServerOperationMasterRole `
+                            -Identity $targetDC `
+                            -OperationMasterRole $selectedInts `
+                            -Force -Confirm:$false -ErrorAction Stop
+                        Write-Host "  Migration completed successfully." -ForegroundColor Green
+                        Write-Host ""
+                        Write-Host "  Verifying new role holders..." -ForegroundColor Cyan
+                        try {
+                            $newDom = Get-ADDomain -Server $Domain -ErrorAction Stop
+                            $newFor = Get-ADForest -Identity $Domain -ErrorAction Stop
+                            Write-Host ("    Schema Master         : {0}" -f $newFor.SchemaMaster)
+                            Write-Host ("    Domain Naming Master  : {0}" -f $newFor.DomainNamingMaster)
+                            Write-Host ("    PDC Emulator          : {0}" -f $newDom.PDCEmulator)
+                            Write-Host ("    RID Master            : {0}" -f $newDom.RIDMaster)
+                            Write-Host ("    Infrastructure Master : {0}" -f $newDom.InfrastructureMaster)
+                        } catch {
+                            Write-Host "  Could not re-query roles: $($_.Exception.Message)" -ForegroundColor Yellow
+                        }
+                    } catch {
+                        Write-Host "  ERROR during migration: $($_.Exception.Message)" -ForegroundColor Red
+                        Write-Host "  Tip: Verify you have Schema Admin / Domain Admin rights and the AD module is loaded." -ForegroundColor Yellow
+                    }
+                } else {
+                    Write-Host "  Migration cancelled." -ForegroundColor Yellow
+                }
+            }
+        }
+    }
 }
 
 Write-Host ""
