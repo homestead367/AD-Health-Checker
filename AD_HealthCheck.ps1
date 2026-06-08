@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Active Directory Domain Health Check Script
 .DESCRIPTION
@@ -14,7 +14,7 @@
       - dfsrmig /getglobalstate, dfsrdiag backlog
       - nslookup SRV, ipconfig /all, dnscmd /zoneinfo
       - netdom query fsmo, w32tm /query /status, /configuration
-      - gpotool /health (Resource Kit — skipped if not installed), gpresult /r, gpresult /h
+      - gpotool /health (Resource Kit - skipped if not installed), gpresult /r, gpresult /h
       - net group Domain Admins / Enterprise Admins
       - dsquery server, Get-ADDomain, Get-ADForest
 #>
@@ -24,7 +24,7 @@ param(
     [string]$ReportDir = "$env:USERPROFILE\Desktop"
 )
 
-# ─── Self-elevation ────────────────────────────────────────────────────────────
+# --- Self-elevation ------------------------------------------------------------
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Write-Host "Not running as Administrator. Relaunching elevated..." -ForegroundColor Yellow
@@ -33,7 +33,7 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     exit
 }
 
-# ─── Banner ───────────────────────────────────────────────────────────────────
+# --- Banner -------------------------------------------------------------------
 Clear-Host
 Write-Host ""
 Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
@@ -46,7 +46,7 @@ Write-Host "  |               Created by Dallas Milem                  |" -Foreg
 Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
 
-# ─── Prompt: Domain name ──────────────────────────────────────────────────────
+# --- Prompt: Domain name ------------------------------------------------------
 $Domain = Read-Host "  Enter the domain DNS name (e.g., contoso.local)"
 $Domain = $Domain.Trim()
 
@@ -65,7 +65,7 @@ if ([string]::IsNullOrWhiteSpace($Domain)) {
 Write-Host ""
 Write-Host "  Domain : $Domain" -ForegroundColor Cyan
 
-# ─── Discover domain controllers for dfsrdiag ─────────────────────────────────
+# --- Discover domain controllers for dfsrdiag ---------------------------------
 $DiscoveredDCs = @()
 try {
     $DiscoveredDCs = @(Get-ADDomainController -Filter * -Server $Domain -ErrorAction Stop |
@@ -90,7 +90,7 @@ if ($override -match ',') {
     Write-Host "  Using: $SourceDC -> $DestDC" -ForegroundColor Green
 }
 
-# ─── Gather FSMO role holders ─────────────────────────────────────────────────
+# --- Gather FSMO role holders -------------------------------------------------
 $FsmoRoles  = [ordered]@{}
 $FsmoGather = $null
 try {
@@ -107,7 +107,7 @@ try {
     Write-Host "  Warning: $FsmoGather" -ForegroundColor Yellow
 }
 
-# ─── Timestamp / Report path ──────────────────────────────────────────────────
+# --- Timestamp / Report path --------------------------------------------------
 $RunTime   = Get-Date
 $Stamp     = $RunTime.ToString("yyyyMMdd_HHmmss")
 $ReportPath = Join-Path $ReportDir "AD_HealthCheck_${Stamp}.html"
@@ -117,10 +117,10 @@ Write-Host ""
 Write-Host "  Report will be saved to: $ReportPath" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Starting checks..." -ForegroundColor Green
-Write-Host "  (Some checks — especially dcdiag /v and repadmin — may take 1-5 minutes)" -ForegroundColor DarkGray
+Write-Host "  (Some checks - especially dcdiag /v and repadmin - may take 1-5 minutes)" -ForegroundColor DarkGray
 Write-Host ""
 
-# ─── Result store ─────────────────────────────────────────────────────────────
+# --- Result store -------------------------------------------------------------
 $Sections = [System.Collections.Specialized.OrderedDictionary]::new()
 
 function Add-CheckResult {
@@ -136,7 +136,7 @@ function Add-CheckResult {
     $Sections[$Section].Add(@{ Command = $Command; Output = $Output; Status = $Status })
 }
 
-# ─── Runner ───────────────────────────────────────────────────────────────────
+# --- Runner -------------------------------------------------------------------
 function Invoke-Check {
     param(
         [string]$Section,
@@ -181,9 +181,9 @@ function Invoke-Check {
     Add-CheckResult -Section $Section -Command $Label -Output $output -Status $status
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 1 — DC Diagnostics
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 1 - DC Diagnostics
+# ==============================================================================
 Write-Host "  [1/8] DC Diagnostics" -ForegroundColor Yellow
 
 Invoke-Check "DC Diagnostics" "dcdiag /v" {
@@ -198,9 +198,9 @@ Invoke-Check "DC Diagnostics" "dcdiag /test:advertising" {
     dcdiag /test:advertising 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 2 — AD Replication
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 2 - AD Replication
+# ==============================================================================
 Write-Host "  [2/8] AD Replication" -ForegroundColor Yellow
 
 Invoke-Check "AD Replication" "repadmin /replsummary" {
@@ -215,9 +215,9 @@ Invoke-Check "AD Replication" "repadmin /queue" {
     repadmin /queue 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 3 — DFSR / Sysvol
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 3 - DFSR / Sysvol
+# ==============================================================================
 Write-Host "  [3/8] DFSR / Sysvol" -ForegroundColor Yellow
 
 Invoke-Check "DFSR / Sysvol" "dfsrmig /getglobalstate" {
@@ -228,9 +228,9 @@ Invoke-Check "DFSR / Sysvol" "dfsrdiag backlog /rgname:`"Domain System Volume`" 
     dfsrdiag backlog /rgname:"Domain System Volume" /smem:$SourceDC /rmem:$DestDC 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 4 — DNS & Network
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 4 - DNS & Network
+# ==============================================================================
 Write-Host "  [4/8] DNS & Network" -ForegroundColor Yellow
 
 Invoke-Check "DNS & Network" "nslookup -type=SRV _ldap._tcp.dc._msdcs.$Domain" {
@@ -243,20 +243,20 @@ Invoke-Check "DNS & Network" "ipconfig /all" {
 }
 
 Invoke-Check "DNS & Network" "dnscmd /zoneinfo $Domain" {
-    # dnscmd must run on a DNS server or target one — runs against local DNS service
+    # dnscmd must run on a DNS server or target one - runs against local DNS service
     dnscmd /zoneinfo $Domain 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 5 — FSMO Roles & Time Service
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 5 - FSMO Roles & Time Service
+# ==============================================================================
 Write-Host "  [5/8] FSMO Roles & Time Service" -ForegroundColor Yellow
 
 Invoke-Check "FSMO Roles & Time Service" "netdom query fsmo" {
     netdom query fsmo 2>&1
 }
 
-Invoke-Check "FSMO Roles & Time Service" "Get-ADDomain / Get-ADForest — Structured FSMO Role Holders" {
+Invoke-Check "FSMO Roles & Time Service" "Get-ADDomain / Get-ADForest - Structured FSMO Role Holders" {
     try {
         $d = Get-ADDomain -Server $Domain -ErrorAction Stop
         $f = Get-ADForest -Identity $Domain -ErrorAction Stop
@@ -281,9 +281,9 @@ Invoke-Check "FSMO Roles & Time Service" "w32tm /query /configuration" {
     w32tm /query /configuration 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 6 — Group Policy
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 6 - Group Policy
+# ==============================================================================
 Write-Host "  [6/8] Group Policy" -ForegroundColor Yellow
 
 Invoke-Check "Group Policy" "gpotool /health" {
@@ -313,9 +313,9 @@ Invoke-Check "Group Policy" "gpresult /h (saved to Desktop)" {
     gpresult /h $GpoHtmlTmp /f 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 7 — Security Groups
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 7 - Security Groups
+# ==============================================================================
 Write-Host "  [7/8] Privileged Security Groups" -ForegroundColor Yellow
 
 Invoke-Check "Privileged Security Groups" "net group `"Domain Admins`" /domain" {
@@ -326,9 +326,9 @@ Invoke-Check "Privileged Security Groups" "net group `"Enterprise Admins`" /doma
     net group "Enterprise Admins" /domain 2>&1
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  SECTION 8 — Directory & Forest Info
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
+#  SECTION 8 - Directory & Forest Info
+# ==============================================================================
 Write-Host "  [8/8] Directory & Forest Info" -ForegroundColor Yellow
 
 Invoke-Check "Directory & Forest Info" "dsquery server -o rdn" {
@@ -351,7 +351,7 @@ Invoke-Check "Directory & Forest Info" "Get-ADForest | Format-List ForestMode" {
     }
 }
 
-# ─── Tally results ────────────────────────────────────────────────────────────
+# --- Tally results ------------------------------------------------------------
 $TotalChecks = 0
 $PassCount   = 0
 $WarnCount   = 0
@@ -368,7 +368,7 @@ foreach ($key in $Sections.Keys) {
     }
 }
 
-# ─── HTML helpers ─────────────────────────────────────────────────────────────
+# --- HTML helpers -------------------------------------------------------------
 function HtmlEncode([string]$s) {
     $s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' -replace '"','&quot;'
 }
@@ -379,7 +379,7 @@ function StatusBadge([string]$status) {
     "<span class='badge' style='background:$bg;'>$status</span>"
 }
 
-# ─── Build HTML body sections ─────────────────────────────────────────────────
+# --- Build HTML body sections -------------------------------------------------
 $htmlBody = ""
 $sectionIdx = 0
 foreach ($sectionName in $Sections.Keys) {
@@ -422,7 +422,7 @@ foreach ($sectionName in $Sections.Keys) {
     $htmlBody += "  </div>`n</section>`n"
 }
 
-# ─── Build FSMO table rows for HTML ──────────────────────────────────────────
+# --- Build FSMO table rows for HTML ------------------------------------------
 $fsmoScopeMap = @{
     "Schema Master"         = "Forest"
     "Domain Naming Master"  = "Forest"
@@ -442,14 +442,14 @@ if ($FsmoRoles.Count -gt 0) {
     $fsmoTableRows = "      <tr><td colspan='3' style='color:var(--red);text-align:center;'>$errMsg</td></tr>"
 }
 
-# ─── Overall status color ─────────────────────────────────────────────────────
+# --- Overall status color -----------------------------------------------------
 $overallColor = if ($ErrCount  -gt 0) { "#da3633" }
                 elseif ($WarnCount -gt 0) { "#e3b341" }
                 else                      { "#3fb950" }
 
 $RunDateStr = $RunTime.ToString("dddd, MMMM d yyyy  HH:mm:ss")
 
-# ─── Full HTML document ───────────────────────────────────────────────────────
+# --- Full HTML document -------------------------------------------------------
 $html = @"
 <!DOCTYPE html>
 <html lang="en">
@@ -468,18 +468,18 @@ $html = @"
   body{background:var(--bg);color:var(--text);font-family:'Segoe UI',Arial,sans-serif;
        padding:24px 32px;line-height:1.5;}
   a{color:var(--accent);}
-  /* ── Header ── */
+  /* -- Header -- */
   .page-header{margin-bottom:28px;}
   .page-header h1{font-size:1.55em;font-weight:700;margin-bottom:6px;}
   .page-header .meta{color:var(--sub);font-size:0.9em;}
   .page-header .meta span{margin-right:20px;}
-  /* ── Summary bar ── */
+  /* -- Summary bar -- */
   .summary{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:28px;}
   .sum-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;
             padding:14px 22px;text-align:center;min-width:110px;}
   .sum-card .num{font-size:2em;font-weight:700;line-height:1.1;}
   .sum-card .lbl{font-size:0.75em;color:var(--sub);text-transform:uppercase;letter-spacing:.08em;margin-top:3px;}
-  /* ── Section cards ── */
+  /* -- Section cards -- */
   .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;
         margin-bottom:14px;overflow:hidden;}
   .card-header{display:flex;align-items:center;gap:10px;padding:13px 18px;
@@ -490,7 +490,7 @@ $html = @"
   .card-meta{font-size:0.78em;color:var(--sub);}
   .caret{font-size:.7em;color:var(--sub);margin-left:6px;}
   .card-body{border-top:1px solid var(--border);}
-  /* ── Individual checks ── */
+  /* -- Individual checks -- */
   .check{border-bottom:1px solid var(--border);}
   .check:last-child{border-bottom:none;}
   .check-header{display:flex;align-items:center;gap:8px;padding:9px 18px;
@@ -504,7 +504,7 @@ $html = @"
                 font-family:'Cascadia Code','Consolas',monospace;font-size:0.8em;
                 white-space:pre-wrap;word-break:break-all;color:#a5d6ff;
                 border-top:1px solid var(--border);max-height:600px;overflow-y:auto;}
-  /* ── FSMO table ── */
+  /* -- FSMO table -- */
   .fsmo-section{background:var(--surface);border:1px solid var(--border);border-radius:8px;
                 margin-bottom:24px;overflow:hidden;}
   .fsmo-heading{padding:13px 18px;font-size:1em;font-weight:600;border-bottom:1px solid var(--border);}
@@ -516,7 +516,7 @@ $html = @"
   .fsmo-table code{font-family:'Cascadia Code','Consolas',monospace;color:var(--accent);}
   .scope-forest{background:#1f3a5f;color:#79c0ff;border-radius:4px;padding:2px 8px;font-size:0.75em;font-weight:600;}
   .scope-domain{background:#1a3320;color:#56d364;border-radius:4px;padding:2px 8px;font-size:0.75em;font-weight:600;}
-  /* ── Footer ── */
+  /* -- Footer -- */
   .footer{margin-top:32px;text-align:center;color:var(--sub);font-size:0.8em;}
 </style>
 </head>
@@ -606,7 +606,7 @@ document.querySelectorAll('[id^="caret_sec"]').forEach(function(c) {
 </html>
 "@
 
-# ─── Write files ──────────────────────────────────────────────────────────────
+# --- Write files --------------------------------------------------------------
 try {
     $html | Out-File -FilePath $ReportPath -Encoding UTF8 -Force
 } catch {
@@ -626,7 +626,7 @@ if (Test-Path $GpoHtmlTmp) {
     } catch { }
 }
 
-# ─── Final summary ────────────────────────────────────────────────────────────
+# --- Final summary ------------------------------------------------------------
 Write-Host ""
 Write-Host "  +---------------------------------------------+" -ForegroundColor Cyan
 Write-Host "  |              Health Check Complete          |" -ForegroundColor Cyan
@@ -648,7 +648,7 @@ if ($open -match '^[Yy]') {
     Start-Process $ReportPath
 }
 
-# ─── FSMO Migration ───────────────────────────────────────────────────────────
+# --- FSMO Migration -----------------------------------------------------------
 Write-Host ""
 Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host "  |               FSMO Role Migration                      |" -ForegroundColor Cyan
