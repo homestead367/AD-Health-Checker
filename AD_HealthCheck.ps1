@@ -46,22 +46,64 @@ Write-Host "  |               Created by Dallas Milem                  |" -Foreg
 Write-Host "  +---------------------------------------------------------+" -ForegroundColor Cyan
 Write-Host ""
 
-# --- Prompt: Domain name ------------------------------------------------------
-$Domain = Read-Host "  Enter the domain DNS name (e.g., contoso.local)"
-$Domain = $Domain.Trim()
+# --- Detect and confirm domain ------------------------------------------------
 
-if ([string]::IsNullOrWhiteSpace($Domain)) {
-    Write-Host "  Attempting to auto-detect domain..." -ForegroundColor Yellow
-    try {
-        $Domain = (Get-ADDomain -ErrorAction Stop).DNSRoot
-        Write-Host "  Auto-detected domain: $Domain" -ForegroundColor Green
-    } catch {
-        Write-Host "  ERROR: No domain entered and auto-detection failed. Exiting." -ForegroundColor Red
-        Read-Host "  Press Enter to close"
-        exit 1
-    }
+# Try multiple sources to detect the current domain
+$DetectedDomain = $null
+
+# Source 1: environment variable set by Windows when domain-joined
+if (-not $DetectedDomain -and $env:USERDNSDOMAIN) {
+    $DetectedDomain = $env:USERDNSDOMAIN.ToLower()
 }
 
+# Source 2: WMI / CIM (works even without RSAT)
+if (-not $DetectedDomain) {
+    try {
+        $cs = Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop
+        if ($cs.PartOfDomain -and $cs.Domain) {
+            $DetectedDomain = $cs.Domain.ToLower()
+        }
+    } catch { }
+}
+
+# Source 3: Active Directory module (most authoritative, requires RSAT)
+if (-not $DetectedDomain) {
+    try {
+        $DetectedDomain = (Get-ADDomain -ErrorAction Stop).DNSRoot.ToLower()
+    } catch { }
+}
+
+# Present detected domain and ask user to confirm or override
+$Domain = $null
+
+if ($DetectedDomain) {
+    Write-Host "  Detected domain  : " -NoNewline
+    Write-Host $DetectedDomain -ForegroundColor Cyan
+    Write-Host ""
+    $confirm = (Read-Host "  Use this domain? (Y/N)").Trim()
+
+    if ($confirm -match '^[Yy]') {
+        $Domain = $DetectedDomain
+        Write-Host "  Using: $Domain" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        $Domain = (Read-Host "  Enter the domain DNS name (e.g., contoso.local)").Trim()
+    }
+} else {
+    Write-Host "  Could not auto-detect a domain. This machine may not be domain-joined." -ForegroundColor Yellow
+    Write-Host ""
+    $Domain = (Read-Host "  Enter the domain DNS name manually (e.g., contoso.local)").Trim()
+}
+
+# Final fallback guard
+if ([string]::IsNullOrWhiteSpace($Domain)) {
+    Write-Host ""
+    Write-Host "  ERROR: No domain specified. Exiting." -ForegroundColor Red
+    Read-Host "  Press Enter to close"
+    exit 1
+}
+
+$Domain = $Domain.ToLower()
 Write-Host ""
 Write-Host "  Domain : $Domain" -ForegroundColor Cyan
 
