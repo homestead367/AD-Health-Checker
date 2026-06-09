@@ -87,15 +87,15 @@ powershell -ExecutionPolicy Bypass -File "C:\path\to\AD_HealthCheck.ps1"
 
 ## What to expect during the run
 
-1. **The script auto-detects the domain** the machine is joined to and displays it for confirmation:
-   - Type `Y` (or press Enter) to proceed with the detected domain.
-   - Type `N` to dismiss it and manually enter a different domain name instead.
+1. **The script auto-detects the domain** the machine is joined to and displays it with a **30-second countdown**. If no key is pressed it auto-accepts and moves on:
+   - Press `Y`, Enter, or any key (except `N`) to accept immediately.
+   - Press `N` to dismiss it and manually enter a different domain name instead.
    - If the machine is not domain-joined or detection fails, you will be prompted to enter the domain name manually.
 2. **The script auto-discovers your domain controllers** and proposes a source/destination pair for the DFSR backlog check. Press Enter to accept, or type `SOURCE,DEST` to specify your own DC names.
 3. **Checks run sequentially** — most complete in seconds, but `dcdiag /v` and the `repadmin` checks can take **1–5 minutes** on larger environments. Progress is displayed in the console as each check runs (`OK`, `WARNING`, or `ERROR`).
 4. **At the end**, you'll be asked whether to review/migrate FSMO roles to a different DC (optional — type `N` to skip).
 5. **The HTML report is saved to your Desktop** as `AD_HealthCheck_<timestamp>.html`, along with a companion `_GPO_Detail.html` file from `gpresult /h`.
-6. You'll be asked whether to open the report in your browser immediately.
+6. **The report opens automatically** in your default browser as soon as it is generated.
 
 ---
 

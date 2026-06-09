@@ -80,14 +80,36 @@ if ($DetectedDomain) {
     Write-Host "  Detected domain  : " -NoNewline
     Write-Host $DetectedDomain -ForegroundColor Cyan
     Write-Host ""
-    $confirm = (Read-Host "  Use this domain? (Y/N)").Trim()
+    Write-Host "  Auto-accepting in 30 seconds -- press N to enter a different domain." -ForegroundColor DarkGray
+    Write-Host ""
 
-    if ($confirm -match '^[Yy]') {
-        $Domain = $DetectedDomain
-        Write-Host "  Using: $Domain" -ForegroundColor Green
-    } else {
+    # 30-second countdown with live display; accept immediately on any key
+    $countdown  = 30
+    $userChoice = $null
+
+    while ($countdown -gt 0) {
+        Write-Host "`r  Use this domain? (Y/N) [$countdown] " -NoNewline
+        if ([Console]::KeyAvailable) {
+            $key = [Console]::ReadKey($true)
+            $userChoice = $key.KeyChar.ToString().ToUpper()
+            break
+        }
+        Start-Sleep -Seconds 1
+        $countdown--
+    }
+    Write-Host ""   # newline after the countdown line
+
+    if ($userChoice -eq 'N') {
         Write-Host ""
         $Domain = (Read-Host "  Enter the domain DNS name (e.g., contoso.local)").Trim()
+    } else {
+        # Y, Enter, any other key, or timeout all accept the detected domain
+        $Domain = $DetectedDomain
+        if ($countdown -eq 0) {
+            Write-Host "  Timed out -- using detected domain." -ForegroundColor Yellow
+        } else {
+            Write-Host "  Using: $Domain" -ForegroundColor Green
+        }
     }
 } else {
     Write-Host "  Could not auto-detect a domain. This machine may not be domain-joined." -ForegroundColor Yellow
@@ -685,10 +707,8 @@ if ($GpoCopied) {
 }
 Write-Host ""
 
-$open = (Read-Host "  Open the HTML report in your browser now? (Y/N)").Trim()
-if ($open -match '^[Yy]') {
-    Start-Process $ReportPath
-}
+Write-Host "  Opening report in browser..." -ForegroundColor Cyan
+Start-Process $ReportPath
 
 # --- FSMO Migration -----------------------------------------------------------
 Write-Host ""
