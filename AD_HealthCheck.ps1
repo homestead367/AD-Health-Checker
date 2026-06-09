@@ -443,6 +443,37 @@ function StatusBadge([string]$status) {
     "<span class='badge' style='background:$bg;'>$status</span>"
 }
 
+# --- Microsoft Docs link map --------------------------------------------------
+# Ordered list of [prefix-to-match, docs-url] pairs.
+# First match wins, so put more-specific entries before broader ones.
+$DocsMap = [ordered]@{
+    "dcdiag"                                        = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc731968(v=ws.11)"
+    "repadmin"                                      = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc770963(v=ws.11)"
+    "dfsrmig"                                       = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2008-r2-and-2008/dd759262(v=ws.11)"
+    "dfsrdiag"                                      = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc754823(v=ws.11)"
+    "nslookup"                                      = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup"
+    "ipconfig"                                      = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig"
+    "dnscmd"                                        = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/dnscmd"
+    "netdom"                                        = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc772217(v=ws.11)"
+    "w32tm"                                         = "https://learn.microsoft.com/en-us/windows-server/networking/windows-time-service/windows-time-service-tools-and-settings"
+    "gpotool"                                       = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2003/cc775379(v=ws.10)"
+    "gpresult"                                      = "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/gpresult"
+    "net group"                                     = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc754051(v=ws.11)"
+    "dsquery server"                                = "https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-server-2012-r2-and-2012/cc730793(v=ws.11)"
+    "Get-ADDomain | Format-List"                    = "https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-addomain"
+    "Get-ADForest | Format-List"                    = "https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-adforest"
+    "Get-ADDomain / Get-ADForest"                   = "https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-addomain"
+}
+
+function Get-DocsLink([string]$label) {
+    foreach ($key in $DocsMap.Keys) {
+        if ($label.StartsWith($key, [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $DocsMap[$key]
+        }
+    }
+    return $null
+}
+
 # --- Build HTML body sections -------------------------------------------------
 $htmlBody = ""
 $sectionIdx = 0
@@ -469,15 +500,20 @@ foreach ($sectionName in $Sections.Keys) {
     $checkIdx = 0
     foreach ($check in $checks) {
         $checkIdx++
-        $uid    = "c${sectionIdx}_${checkIdx}"
-        $badge  = StatusBadge $check.Status
-        $enc    = HtmlEncode $check.Output
+        $uid      = "c${sectionIdx}_${checkIdx}"
+        $badge    = StatusBadge $check.Status
+        $enc      = HtmlEncode $check.Output
+        $docsUrl  = Get-DocsLink $check.Command
+        $docsHtml = if ($docsUrl) {
+            "<a class='docs-link' href='$docsUrl' target='_blank' rel='noopener noreferrer' onclick='event.stopPropagation()' title='Microsoft Documentation'>&#128196; Docs</a>"
+        } else { "" }
         $htmlBody += @"
     <div class="check">
       <div class="check-header" onclick="toggleCheck('$uid')">
         <span class="caret" id="caret_$uid">&#9654;</span>
         <code class="cmd-label">$(HtmlEncode $check.Command)</code>
         $badge
+        $docsHtml
       </div>
       <pre class="check-output" id="out_$uid">$enc</pre>
     </div>
@@ -564,6 +600,10 @@ $html = @"
              flex:1;color:var(--accent);}
   .badge{display:inline-block;padding:1px 9px;border-radius:20px;font-size:0.75em;
          font-weight:600;color:#fff;margin-left:6px;}
+  .docs-link{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:20px;
+             font-size:0.75em;font-weight:600;color:#58a6ff;border:1px solid #1f6feb;
+             text-decoration:none;white-space:nowrap;}
+  .docs-link:hover{background:#1f6feb;color:#fff;}
   .check-output{display:none;padding:14px 22px;background:#010409;
                 font-family:'Cascadia Code','Consolas',monospace;font-size:0.8em;
                 white-space:pre-wrap;word-break:break-all;color:#a5d6ff;
