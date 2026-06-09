@@ -154,20 +154,30 @@ if ($override -match ',') {
     Write-Host "  Using: $SourceDC -> $DestDC" -ForegroundColor Green
 }
 
-# --- Gather FSMO role holders -------------------------------------------------
-$FsmoRoles  = [ordered]@{}
-$FsmoGather = $null
+# --- Gather FSMO role holders and functional levels ---------------------------
+$FsmoRoles      = [ordered]@{}
+$FsmoGather     = $null
+$FuncLevels     = [ordered]@{}
+$FuncLevelError = $null
 try {
     $adDom = Get-ADDomain -Server $Domain -ErrorAction Stop
     $adFor = Get-ADForest -Identity $Domain -ErrorAction Stop
+
+    # FSMO roles
     $FsmoRoles["Schema Master"]         = $adFor.SchemaMaster
     $FsmoRoles["Domain Naming Master"]  = $adFor.DomainNamingMaster
     $FsmoRoles["PDC Emulator"]          = $adDom.PDCEmulator
     $FsmoRoles["RID Master"]            = $adDom.RIDMaster
     $FsmoRoles["Infrastructure Master"] = $adDom.InfrastructureMaster
-    Write-Host "  FSMO roles retrieved." -ForegroundColor Green
+
+    # Functional levels
+    $FuncLevels["Domain Functional Level"] = $adDom.DomainMode.ToString()
+    $FuncLevels["Forest Functional Level"] = $adFor.ForestMode.ToString()
+
+    Write-Host "  FSMO roles and functional levels retrieved." -ForegroundColor Green
 } catch {
-    $FsmoGather = "Could not retrieve FSMO roles: $($_.Exception.Message)"
+    $FsmoGather     = "Could not retrieve FSMO roles: $($_.Exception.Message)"
+    $FuncLevelError = "Could not retrieve functional levels: $($_.Exception.Message)"
     Write-Host "  Warning: $FsmoGather" -ForegroundColor Yellow
 }
 
@@ -542,6 +552,44 @@ if ($FsmoRoles.Count -gt 0) {
     $fsmoTableRows = "      <tr><td colspan='3' style='color:var(--red);text-align:center;'>$errMsg</td></tr>"
 }
 
+# --- Build functional level table rows for HTML -------------------------------
+# Map the raw enum string to a friendly Windows Server version label
+$FuncLevelMap = @{
+    "Windows2000Domain"      = "Windows 2000"
+    "Windows2000Forest"      = "Windows 2000"
+    "Windows2003InterimDomain" = "Windows Server 2003 Interim"
+    "Windows2003InterimForest" = "Windows Server 2003 Interim"
+    "Windows2003Domain"      = "Windows Server 2003"
+    "Windows2003Forest"      = "Windows Server 2003"
+    "Windows2008Domain"      = "Windows Server 2008"
+    "Windows2008Forest"      = "Windows Server 2008"
+    "Windows2008R2Domain"    = "Windows Server 2008 R2"
+    "Windows2008R2Forest"    = "Windows Server 2008 R2"
+    "Windows2012Domain"      = "Windows Server 2012"
+    "Windows2012Forest"      = "Windows Server 2012"
+    "Windows2012R2Domain"    = "Windows Server 2012 R2"
+    "Windows2012R2Forest"    = "Windows Server 2012 R2"
+    "Windows2016Domain"      = "Windows Server 2016"
+    "Windows2016Forest"      = "Windows Server 2016"
+    "Windows2019Domain"      = "Windows Server 2019"
+    "Windows2019Forest"      = "Windows Server 2019"
+    "Windows2025Domain"      = "Windows Server 2025"
+    "Windows2025Forest"      = "Windows Server 2025"
+}
+
+$funcLevelRows = ""
+if ($FuncLevels.Count -gt 0) {
+    foreach ($lvlKey in $FuncLevels.Keys) {
+        $raw      = $FuncLevels[$lvlKey]
+        $friendly = if ($FuncLevelMap.ContainsKey($raw)) { $FuncLevelMap[$raw] } else { $raw }
+        $scope    = if ($lvlKey -match "Domain") { "Domain" } else { "Forest" }
+        $funcLevelRows += "      <tr><td>$lvlKey</td><td><span class='scope-$($scope.ToLower())'>$scope</span></td><td><strong>$(HtmlEncode $friendly)</strong> <span style='color:var(--sub);font-size:0.85em;'>($(HtmlEncode $raw))</span></td></tr>`n"
+    }
+} else {
+    $errMsg = HtmlEncode (if ($FuncLevelError) { $FuncLevelError } else { "Functional level data unavailable" })
+    $funcLevelRows = "      <tr><td colspan='3' style='color:var(--red);text-align:center;'>$errMsg</td></tr>"
+}
+
 # --- Overall status color -----------------------------------------------------
 $overallColor = if ($ErrCount  -gt 0) { "#da3633" }
                 elseif ($WarnCount -gt 0) { "#e3b341" }
@@ -669,6 +717,18 @@ $html = @"
     </thead>
     <tbody>
 $fsmoTableRows
+    </tbody>
+  </table>
+</div>
+
+<div class="fsmo-section">
+  <div class="fsmo-heading">&#127970; Domain &amp; Forest Functional Levels</div>
+  <table class="fsmo-table">
+    <thead>
+      <tr><th>Level</th><th>Scope</th><th>Current Mode</th></tr>
+    </thead>
+    <tbody>
+$funcLevelRows
     </tbody>
   </table>
 </div>
