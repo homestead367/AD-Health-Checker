@@ -87,7 +87,10 @@ powershell -ExecutionPolicy Bypass -File "C:\path\to\AD_HealthCheck.ps1"
 
 ## What to expect during the run
 
-1. **You'll be prompted for the domain DNS name** (e.g., `contoso.local`). Press Enter with no input to let the script try to auto-detect it.
+1. **The script auto-detects the domain** the machine is joined to and displays it for confirmation:
+   - Type `Y` (or press Enter) to proceed with the detected domain.
+   - Type `N` to dismiss it and manually enter a different domain name instead.
+   - If the machine is not domain-joined or detection fails, you will be prompted to enter the domain name manually.
 2. **The script auto-discovers your domain controllers** and proposes a source/destination pair for the DFSR backlog check. Press Enter to accept, or type `SOURCE,DEST` to specify your own DC names.
 3. **Checks run sequentially** — most complete in seconds, but `dcdiag /v` and the `repadmin` checks can take **1–5 minutes** on larger environments. Progress is displayed in the console as each check runs (`OK`, `WARNING`, or `ERROR`).
 4. **At the end**, you'll be asked whether to review/migrate FSMO roles to a different DC (optional — type `N` to skip).
